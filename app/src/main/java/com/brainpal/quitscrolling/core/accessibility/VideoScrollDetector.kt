@@ -11,10 +11,10 @@ import kotlin.math.abs
 data class ScrollSessionState(
     var isInReelSession: Boolean = false,
     var hasCountedInitialReel: Boolean = false,
+    var lastClickedReelElapsedRealtime: Long = 0L,
     var maxReachedIndex: Int = -1,
     var currentIndex: Int = -1,
     var currentFingerprint: Int = 0,
-    var pendingCandidateFingerprint: Int = 0,
     var pendingForwardScrollConfirmed: Boolean = false,
     var signedNetDeltaY: Int = 0,
     var lastScrollY: Int = -1,
@@ -26,14 +26,24 @@ data class ScrollSessionState(
     fun resetSession() {
         isInReelSession = false
         hasCountedInitialReel = false
+        lastClickedReelElapsedRealtime = 0L
         maxReachedIndex = -1
         currentIndex = -1
         currentFingerprint = 0
-        pendingCandidateFingerprint = 0
         pendingForwardScrollConfirmed = false
         signedNetDeltaY = 0
         lastScrollY = -1
         seenFingerprints.clear()
+    }
+
+    fun exitReelViewerToFeed() {
+        isInReelSession = false
+        hasCountedInitialReel = false
+        maxReachedIndex = -1
+        currentIndex = -1
+        pendingForwardScrollConfirmed = false
+        signedNetDeltaY = 0
+        lastScrollY = -1
     }
 
     fun rememberFingerprint(fp: Int) {
@@ -59,12 +69,9 @@ class VideoScrollDetector(
     private val sessionStates = mutableMapOf<String, ScrollSessionState>()
 
     companion object {
-        // Strict 950ms minimum interval between reel counts so a single swipe can NEVER count 2 or 3 times
-        private const val MIN_REEL_COUNT_INTERVAL_MS = 950L
-        // Session expires if user leaves the Reel player for more than 12 seconds
-        private const val REEL_SESSION_IDLE_RESET_MS = 12_000L
-        private const val MAX_TRAVERSAL_DEPTH = 7
-        private const val MAX_NODES_VISITED = 65
+        private const val MIN_REEL_COUNT_INTERVAL_MS = 900L
+        private const val MAX_TRAVERSAL_DEPTH = 8
+        private const val MAX_NODES_VISITED = 75
 
         private val KNOWN_REEL_VIEW_IDS = setOf(
             // Instagram Reels
@@ -98,7 +105,7 @@ class VideoScrollDetector(
         )
 
         private val REEL_ENGAGEMENT_REGEX = Regex(
-            "(?i)(like|comment|reply|share|remix|original audio|subscribe|follow|repost|bookmark)"
+            "(?i)(like|comment|reply|share|send|remix|original audio|audio|subscribe|follow|repost|bookmark)"
         )
 
         private val VIDEO_SURFACE_KEYWORDS = listOf(
@@ -116,6 +123,27 @@ class VideoScrollDetector(
             "(?i)(video player|unmute|mute|play video|pause video|watch reel|immersive)"
         )
 
+        // Markers that only appear on the main social feed (like Screenshot 2: "Add friend", "See all", "What's on your mind")
+        // and NEVER inside the full-screen Reel player!
+        private val MAIN_FEED_ONLY_MARKERS = listOf(
+            "add friend",
+            "what's on your mind",
+            "create a post",
+            "stories",
+            "people you may know",
+            "see all"
+        )
+
+        private val REEL_CLICK_KEYWORDS = listOf(
+            "reel",
+            "reels",
+            "short",
+            "shorts",
+            "video",
+            "watch",
+            "play"
+        )
+
         private val COMMENT_INPUT_HINTS = listOf(
             "add a comment",
             "write a comment",
@@ -124,8 +152,6 @@ class VideoScrollDetector(
             "add a reply"
         )
 
-        // Dynamic timer/progress strings (e.g., "0:04 / 0:30") must be excluded from fingerprint
-        // so a playing video doesn't change its own fingerprint every second!
         private val TIMESTAMP_NOISE_REGEX = Regex("^\\d{1,2}:\\d{2}.*")
     }
 
@@ -138,8 +164,79 @@ class VideoScrollDetector(
     }
 
     /**
-     * Checks whether the current active window is displaying a Reel, Short, or Video player,
-     * AND counts the VERY FIRST reel when the user opens a Reel/Short viewer!
+     * Called when the user taps a view (TYPE_VIEW_CLICKED) inside a monitored social app.
+     * Detects when the user taps a Reel card in the feed (like Screenshot 2) or taps the Reels/Shorts tab,
+     * preparing or counting the initial Reel immediately!
+     */
+    fun evaluateClickEvent(
+        event: AccessibilityEvent,
+        rootNode: AccessibilityNodeInfo?
+    ) {
+        if (event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) return
+        val pkg = event.packageName?.toString() ?: return
+        val platform = SocialPlatform.fromPackageName(pkg) ?: return
+        val state = sessionStates.getOrPut(pkg) { ScrollSessionState() }
+
+        val screenWidth = screenWidthProvider().coerceAtLeast(1080)
+        val screenHeight = screenHeightProvider().coerceAtLeast(1920)
+        val now = SystemClock.elapsedRealtime()
+
+        val sourceNode = event.source
+        val clickedBounds = Rect()
+        sourceNode?.getBoundsInScreen(clickedBounds)
+
+        // Check if the clicked item is a tall vertical Reel preview card (like "Papaya or Bulb" in Screenshot 2)
+        // or has Reel/Short/Video text/description
+        val isTallReelCard = clickedBounds.height() >= (screenHeight * 0.25f).toInt() &&
+            clickedBounds.width() >= (screenWidth * 0.30f).toInt() &&
+            clickedBounds.height() > clickedBounds.width()
+
+        val combinedClickText = buildString {
+            append(event.text.joinToString(" "))
+            append(" ")
+            append(event.contentDescription ?: "")
+            append(" ")
+            append(sourceNode?.text ?: "")
+            append(" ")
+            append(sourceNode?.contentDescription ?: "")
+        }.lowercase()
+
+        val hasReelKeyword = REEL_CLICK_KEYWORDS.any { combinedClickText.contains(it) }
+
+        // Also check if the active window currently has a "Reels" tray header visible
+        val windowHasReelsTray = rootNode != null && hasReelsTrayInFeed(rootNode)
+
+        if (isTallReelCard || hasReelKeyword || (windowHasReelsTray && clickedBounds.height() >= (screenHeight * 0.18f).toInt())) {
+            // User just tapped a Reel card or Reels tab!
+            // Reset hasCountedInitialReel so as soon as the Reel player opens, the first Reel is counted!
+            state.exitReelViewerToFeed()
+            state.lastClickedReelElapsedRealtime = now
+        }
+    }
+
+    private fun hasReelsTrayInFeed(root: AccessibilityNodeInfo): Boolean {
+        var found = false
+        var visited = 0
+        fun check(node: AccessibilityNodeInfo, depth: Int) {
+            if (depth > 5 || visited >= 45 || found) return
+            visited++
+            val t = node.text?.toString()?.lowercase().orEmpty()
+            val d = node.contentDescription?.toString()?.lowercase().orEmpty()
+            if (t == "reels" || t == "shorts" || d.contains("reels") || d.contains("shorts")) {
+                found = true
+                return
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { check(it, depth + 1) }
+            }
+        }
+        check(root, 0)
+        return found
+    }
+
+    /**
+     * Checks whether the current active window is displaying a full-screen Reel/Short player,
+     * AND counts the VERY FIRST reel when the user opens a Reel/Short (either from a feed card tap or tab)!
      */
     fun evaluateWindowForInitialReelOrVisibility(
         packageName: String,
@@ -156,28 +253,36 @@ class VideoScrollDetector(
         }
 
         val scan = scanWindowForMediaAndFingerprint(rootNode, screenWidth, screenHeight)
-        val isFullScreenReelViewer = scan.hasKnownReelId ||
-            (scan.hasFullScreenMediaSurface && scan.engagementCount >= 2) ||
-            (scan.hasAnyVideoSurface && scan.engagementCount >= 3)
-
         val state = sessionStates.getOrPut(packageName) { ScrollSessionState() }
         val now = SystemClock.elapsedRealtime()
 
+        val recentlyClickedReel = (now - state.lastClickedReelElapsedRealtime) in 1..3800L
+
+        // If the screen shows main feed markers ("Add friend", "See all", "What's on your mind"),
+        // the user is on the regular News Feed (like Screenshot 2), NOT inside the full-screen Reel player!
+        if (scan.isMainFeedScreen && !scan.hasKnownReelId) {
+            state.exitReelViewerToFeed()
+            return scan.hasAnyVideoSurface to null
+        }
+
+        val isFullScreenReelViewer = scan.hasKnownReelId ||
+            (scan.hasFullScreenMediaSurface && scan.engagementCount >= 2) ||
+            (scan.hasAnyVideoSurface && scan.engagementCount >= 2 && !scan.isMainFeedScreen) ||
+            (scan.hasFullScreenPagerContainer && scan.engagementCount >= 2 && !scan.isMainFeedScreen) ||
+            (recentlyClickedReel && scan.engagementCount >= 2 && !scan.isMainFeedScreen)
+
         if (!isFullScreenReelViewer) {
-            // If user navigated away from the Reels tab into DMs/Profile for > 12s, reset the reel session
-            if (state.isInReelSession && (now - state.lastReelScreenSeenElapsedRealtime) > REEL_SESSION_IDLE_RESET_MS) {
-                state.resetSession()
-            }
             return scan.hasAnyVideoSurface to null
         }
 
         state.lastReelScreenSeenElapsedRealtime = now
 
-        // Count the FIRST reel when opening Facebook Shorts / IG Reels / YT Shorts / X Videos!
+        // Count the INITIAL reel immediately when entering the full-screen Reel/Shorts player!
         if (!state.isInReelSession || !state.hasCountedInitialReel) {
             if (now - state.lastIncrementElapsedRealtime >= MIN_REEL_COUNT_INTERVAL_MS) {
                 state.isInReelSession = true
                 state.hasCountedInitialReel = true
+                state.lastClickedReelElapsedRealtime = 0L
                 state.signedNetDeltaY = 0
                 if (scan.stableContentFingerprint != 0) {
                     state.currentFingerprint = scan.stableContentFingerprint
@@ -215,11 +320,7 @@ class VideoScrollDetector(
     }
 
     /**
-     * Evaluates a TYPE_VIEW_SCROLLED event with strict full-page completion and backward-scroll deduplication:
-     * - Partial up/down dragging on the same reel cancels out and NEVER counts.
-     * - Scrolling back to a previous reel NEVER counts.
-     * - Re-scrolling forward onto an already-counted reel NEVER counts.
-     * - Only a completed forward scroll to a brand-new reel counts (+1).
+     * Evaluates a TYPE_VIEW_SCROLLED event with strict full-page completion and backward-scroll deduplication.
      */
     fun evaluateScrollEvent(
         event: AccessibilityEvent,
@@ -234,7 +335,7 @@ class VideoScrollDetector(
         val screenWidth = screenWidthProvider().coerceAtLeast(1080)
         val screenHeight = screenHeightProvider().coerceAtLeast(1920)
 
-        // 1. Exclude horizontal carousels
+        // 1. Exclude horizontal carousels (like swiping a horizontal Reels tray on the main feed)
         val dx = event.scrollDeltaX
         val dy = event.scrollDeltaY
         if (abs(dx) > abs(dy) * 1.2f && abs(dx) > 35) {
@@ -249,8 +350,6 @@ class VideoScrollDetector(
         val state = sessionStates.getOrPut(pkg) { ScrollSessionState() }
         val now = SystemClock.elapsedRealtime()
 
-        // If the user hasn't scrolled for > 3 seconds, reset any leftover partial drag delta
-        // so small wiggles separated by several seconds never add up!
         if (now - state.lastScrollEventElapsedRealtime > 2500L) {
             state.signedNetDeltaY = 0
             state.pendingForwardScrollConfirmed = false
@@ -264,12 +363,21 @@ class VideoScrollDetector(
             screenHeight = screenHeight
         )
 
+        // If user is scrolling on the main News Feed (where "Add friend" / "See all" are visible),
+        // reset the Reel viewer session so clicking a Reel next will count the initial Reel!
+        if (windowScan.isMainFeedScreen && matchedKnownId == null && !windowScan.hasKnownReelId) {
+            state.exitReelViewerToFeed()
+            return null
+        }
+
         val isFullScreenReel = matchedKnownId != null ||
             windowScan.hasKnownReelId ||
             (windowScan.hasFullScreenMediaSurface && windowScan.engagementCount >= 2) ||
+            (windowScan.hasFullScreenPagerContainer && windowScan.engagementCount >= 2 && !windowScan.isMainFeedScreen) ||
             matchesGeometricAndMediaHeuristics(sourceNode, screenWidth, screenHeight)
 
         val isFeedVideo = !isFullScreenReel &&
+            !windowScan.isMainFeedScreen &&
             (windowScan.hasAnyVideoSurface || matchesInFeedVideoNode(sourceNode, screenHeight))
 
         if (!isFullScreenReel && !isFeedVideo) {
@@ -327,9 +435,6 @@ class VideoScrollDetector(
     ): Boolean {
         val cooldownReady = (now - state.lastIncrementElapsedRealtime) >= MIN_REEL_COUNT_INTERVAL_MS
 
-        // Track signed vertical displacement:
-        // Scrolling DOWN to the next reel is positive (+dy).
-        // Dragging UP / returning to a previous reel is negative (-dy), which subtracts from signedNetDeltaY!
         val dy = event.scrollDeltaY
         if (dy != 0) {
             state.signedNetDeltaY = (state.signedNetDeltaY + dy).coerceAtLeast(-screenHeight)
@@ -343,12 +448,7 @@ class VideoScrollDetector(
             state.lastScrollY = event.scrollY
         }
 
-        // =========================================================================
         // CASE 1: Pager/RecyclerView provides a valid item index (fromIndex / toIndex)
-        // =========================================================================
-        // In ViewPager2 / RecyclerView, when a single-item page snap completes, fromIndex == toIndex (or fromIndex advances).
-        // If the user is only dragging halfway between page 0 and page 1, fromIndex is 0 and toIndex is 1,
-        // and if they release without snapping to page 1, it settles back to fromIndex = 0, toIndex = 0!
         val settledIndex = when {
             event.fromIndex >= 0 && event.toIndex >= 0 && event.fromIndex == event.toIndex -> event.fromIndex
             event.fromIndex >= 0 && event.toIndex < 0 -> event.fromIndex
@@ -357,23 +457,18 @@ class VideoScrollDetector(
 
         if (settledIndex >= 0) {
             if (state.maxReachedIndex < 0) {
-                // Initialize baseline index on the current reel without double-counting
                 state.currentIndex = settledIndex
                 state.maxReachedIndex = settledIndex
                 return false
             }
 
-            // If user scrolled BACKWARD to a previous reel (settledIndex < currentIndex)
-            // or returned to an index <= maxReachedIndex, update currentIndex and DO NOT COUNT!
             if (settledIndex <= state.maxReachedIndex) {
                 state.currentIndex = settledIndex
                 state.signedNetDeltaY = 0
                 return false
             }
 
-            // User settled on a brand-new index strictly greater than maxReachedIndex!
             if (settledIndex > state.maxReachedIndex && cooldownReady) {
-                // Also verify content fingerprint hasn't already been seen (if available)
                 if (currentFingerprint != 0 && currentFingerprint in state.seenFingerprints) {
                     state.currentIndex = settledIndex
                     state.maxReachedIndex = settledIndex
@@ -393,7 +488,6 @@ class VideoScrollDetector(
             return false
         }
 
-        // What if the pager reports fromIndex != toIndex (e.g., RecyclerView reporting visible range [fromIndex, toIndex])?
         if (event.fromIndex >= 0 && event.toIndex > event.fromIndex) {
             val leadIndex = event.fromIndex
             if (state.maxReachedIndex < 0) {
@@ -425,35 +519,26 @@ class VideoScrollDetector(
             return false
         }
 
-        // =========================================================================
         // CASE 2: Obfuscated Pager / Litho / X where fromIndex == -1
-        // =========================================================================
-        // Require BOTH:
-        // 1. A full-page forward net scroll displacement (>= 68% of screen height), so slight up/down drags never trigger.
-        // 2. A brand-new position-independent contentFingerprint that is NOT in seenFingerprints,
-        //    so wiggling the same reel or going back to a previous reel never counts!
-        val fullPageSnapThreshold = (screenHeight * 0.68f).toInt()
+        val fullPageSnapThreshold = (screenHeight * 0.65f).toInt()
 
         if (state.signedNetDeltaY >= fullPageSnapThreshold) {
             state.pendingForwardScrollConfirmed = true
         } else if (state.signedNetDeltaY < -fullPageSnapThreshold / 2) {
-            // User scrolled backward (up) -> cancel pending forward scroll
             state.pendingForwardScrollConfirmed = false
         }
 
         if (state.pendingForwardScrollConfirmed && cooldownReady) {
-            if (currentFingerprint != 0) {
-                // Only count if the settled reel's content fingerprint is brand new!
-                if (currentFingerprint != state.currentFingerprint &&
-                    currentFingerprint !in state.seenFingerprints
-                ) {
-                    state.pendingForwardScrollConfirmed = false
-                    state.signedNetDeltaY = 0
-                    state.currentFingerprint = currentFingerprint
-                    state.rememberFingerprint(currentFingerprint)
-                    state.lastIncrementElapsedRealtime = now
-                    return true
-                }
+            if (currentFingerprint != 0 &&
+                currentFingerprint != state.currentFingerprint &&
+                currentFingerprint !in state.seenFingerprints
+            ) {
+                state.pendingForwardScrollConfirmed = false
+                state.signedNetDeltaY = 0
+                state.currentFingerprint = currentFingerprint
+                state.rememberFingerprint(currentFingerprint)
+                state.lastIncrementElapsedRealtime = now
+                return true
             }
         }
 
@@ -463,17 +548,13 @@ class VideoScrollDetector(
     private data class WindowMediaScanResult(
         val hasKnownReelId: Boolean,
         val hasFullScreenMediaSurface: Boolean,
+        val hasFullScreenPagerContainer: Boolean,
         val hasAnyVideoSurface: Boolean,
+        val isMainFeedScreen: Boolean,
         val engagementCount: Int,
         val stableContentFingerprint: Int
     )
 
-    /**
-     * Scans the active window for media surfaces and computes a POSITION-INDEPENDENT
-     * content fingerprint from the author name, caption, and audio title of the currently visible reel.
-     * Because pixel coordinates (rect.top / rect.centerY) are NOT included in the hash,
-     * dragging the same reel slightly up and down NEVER changes stableContentFingerprint!
-     */
     private fun scanWindowForMediaAndFingerprint(
         root: AccessibilityNodeInfo,
         screenWidth: Int,
@@ -481,7 +562,9 @@ class VideoScrollDetector(
     ): WindowMediaScanResult {
         var hasKnownId = false
         var hasFullScreenSurface = false
+        var hasFullScreenPager = false
         var hasAnySurface = false
+        var isMainFeed = false
         var engagementCount = 0
         var visited = 0
 
@@ -503,12 +586,25 @@ class VideoScrollDetector(
             val cls = node.className?.toString().orEmpty().lowercase()
             val desc = node.contentDescription?.toString()?.trim().orEmpty()
             val txt = node.text?.toString()?.trim().orEmpty()
+            val lowerTxt = txt.lowercase()
+            val lowerDesc = desc.lowercase()
+
+            // Detect if we are on the regular News Feed (e.g., "Add friend", "See all", "What's on your mind")
+            if (MAIN_FEED_ONLY_MARKERS.any { lowerTxt == it || lowerDesc == it || lowerTxt.contains("mutual friends") }) {
+                isMainFeed = true
+            }
 
             node.getBoundsInScreen(rect)
-
-            // Ignore nodes that are scrolled off-screen or barely peeking at the very top/bottom edge
             val centerY = rect.centerY()
-            val isInPrimaryViewport = centerY in (screenHeight * 0.12f).toInt()..(screenHeight * 0.88f).toInt()
+            val isInPrimaryViewport = centerY in (screenHeight * 0.10f).toInt()..(screenHeight * 0.90f).toInt()
+
+            if (PAGER_CANDIDATE_KEYWORDS.any { cls.contains(it) }) {
+                if (rect.height() >= (screenHeight * 0.78f).toInt() &&
+                    rect.width() >= (screenWidth * 0.85f).toInt()
+                ) {
+                    hasFullScreenPager = true
+                }
+            }
 
             val isVisibleMediaSize = rect.height() >= (screenHeight * 0.25f).toInt() &&
                 rect.width() >= (screenWidth * 0.55f).toInt()
@@ -529,8 +625,6 @@ class VideoScrollDetector(
                     engagementCount++
                 }
 
-                // Collect stable text tokens (author handle, caption, audio title, engagement counts)
-                // while excluding generic button labels and ticking playback timestamps
                 if (txt.length in 3..100 &&
                     !TIMESTAMP_NOISE_REGEX.matches(txt) &&
                     !REEL_ENGAGEMENT_REGEX.matches(txt)
@@ -566,7 +660,9 @@ class VideoScrollDetector(
         return WindowMediaScanResult(
             hasKnownReelId = hasKnownId,
             hasFullScreenMediaSurface = hasFullScreenSurface,
+            hasFullScreenPagerContainer = hasFullScreenPager,
             hasAnyVideoSurface = hasAnySurface,
+            isMainFeedScreen = isMainFeed,
             engagementCount = engagementCount,
             stableContentFingerprint = stableFingerprint
         )
@@ -651,7 +747,7 @@ class VideoScrollDetector(
         if (heightRatio < 0.65f || widthRatio < 0.80f) return false
 
         val scan = scanWindowForMediaAndFingerprint(node, screenWidth, screenHeight)
-        return scan.hasAnyVideoSurface && scan.engagementCount >= 2
+        return !scan.isMainFeedScreen && (scan.hasAnyVideoSurface || scan.engagementCount >= 2)
     }
 
     private fun matchesInFeedVideoNode(
