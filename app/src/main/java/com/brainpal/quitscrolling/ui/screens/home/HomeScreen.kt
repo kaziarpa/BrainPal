@@ -706,7 +706,7 @@ fun HomeScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Soft tactile feedback on scroll counts, buttons & sliders",
+                                    text = "Soft tactile feedback on buttons, tabs & sliders inside Likhon",
                                     color = TextSecondaryMuted,
                                     fontSize = 11.sp
                                 )

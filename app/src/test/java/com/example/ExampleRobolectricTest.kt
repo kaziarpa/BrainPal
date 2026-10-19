@@ -2,9 +2,12 @@ package com.example
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.brainpal.quitscrolling.core.accessibility.ScrollSessionState
 import com.brainpal.quitscrolling.data.model.SocialPlatform
 import com.brainpal.quitscrolling.ui.components.BrainRotStage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -43,5 +46,19 @@ class ExampleRobolectricTest {
         assertEquals(SocialPlatform.X_TWITTER, SocialPlatform.fromPackageName("com.twitter.android"))
         assertEquals(SocialPlatform.X_TWITTER, SocialPlatform.fromPackageName("com.twitter.android.lite"))
         assertEquals(SocialPlatform.X_TWITTER, SocialPlatform.fromPackageName("com.x.android"))
+    }
+
+    @Test
+    fun `scroll session state tracks seen fingerprints and resets cleanly`() {
+        val state = ScrollSessionState()
+        state.rememberFingerprint(101)
+        state.rememberFingerprint(202)
+        assertTrue(101 in state.seenFingerprints)
+        assertTrue(202 in state.seenFingerprints)
+
+        state.resetSession()
+        assertFalse(state.isInReelSession)
+        assertFalse(state.hasCountedInitialReel)
+        assertTrue(state.seenFingerprints.isEmpty())
     }
 }

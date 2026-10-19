@@ -6,7 +6,6 @@ import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,18 +16,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,21 +38,17 @@ import androidx.compose.ui.unit.sp
 import com.brainpal.quitscrolling.core.haptics.LikhonHaptics
 import com.brainpal.quitscrolling.data.model.SocialPlatform
 import com.brainpal.quitscrolling.ui.components.BrainMascotCanvas
-import com.brainpal.quitscrolling.ui.theme.AccentGold
 import com.brainpal.quitscrolling.ui.theme.BadgeMaroon
 import com.brainpal.quitscrolling.ui.theme.BadgeTextRed
 import com.brainpal.quitscrolling.ui.theme.ButtonCream
 import com.brainpal.quitscrolling.ui.theme.ButtonDarkText
-import com.brainpal.quitscrolling.ui.theme.CardBorder
 import com.brainpal.quitscrolling.ui.theme.CardSurface
-import com.brainpal.quitscrolling.ui.theme.ObsidianBackground
 import com.brainpal.quitscrolling.ui.theme.TextPrimaryWhite
 import com.brainpal.quitscrolling.ui.theme.TextSecondaryMuted
 
 class ReelBlockerOverlayManager(
     private val context: Context,
-    private val onExitToHome: () -> Unit,
-    private val onSnoozeFiveMinutes: () -> Unit
+    private val onExitToHome: () -> Unit
 ) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var composeView: ComposeView? = null
@@ -66,9 +57,7 @@ class ReelBlockerOverlayManager(
 
     fun showBlockerShield(
         platform: SocialPlatform,
-        todayCount: Int,
-        dailyLimit: Int,
-        instantBlockMode: Boolean
+        todayCount: Int
     ) {
         if (isShowing) return
 
@@ -95,21 +84,10 @@ class ReelBlockerOverlayManager(
                 ReelBlockerShieldComposable(
                     platform = platform,
                     todayCount = todayCount,
-                    dailyLimit = dailyLimit,
-                    instantBlockMode = instantBlockMode,
-                    onGoHomeClick = {
+                    onQuitToHomeClick = {
                         LikhonHaptics.softTap(context)
                         hideBlockerShield()
                         onExitToHome()
-                    },
-                    onDismissClick = {
-                        LikhonHaptics.softTap(context)
-                        hideBlockerShield()
-                    },
-                    onSnoozeClick = {
-                        LikhonHaptics.softTap(context)
-                        hideBlockerShield()
-                        onSnoozeFiveMinutes()
                     }
                 )
             }
@@ -145,11 +123,7 @@ class ReelBlockerOverlayManager(
 private fun ReelBlockerShieldComposable(
     platform: SocialPlatform,
     todayCount: Int,
-    dailyLimit: Int,
-    instantBlockMode: Boolean,
-    onGoHomeClick: () -> Unit,
-    onDismissClick: () -> Unit,
-    onSnoozeClick: () -> Unit
+    onQuitToHomeClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -157,9 +131,9 @@ private fun ReelBlockerShieldComposable(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xEE0A0A0D),
-                        Color(0xF51A0D10),
-                        Color(0xFA0A0A0D)
+                        Color(0xFA0A0A0D),
+                        Color(0xFC1A0D10),
+                        Color(0xFF0A0A0D)
                     )
                 )
             )
@@ -171,11 +145,11 @@ private fun ReelBlockerShieldComposable(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(28.dp))
                 .background(CardSurface)
-                .border(1.5.dp, BadgeTextRed.copy(alpha = 0.55f), RoundedCornerShape(28.dp))
-                .padding(24.dp),
+                .border(1.5.dp, BadgeTextRed.copy(alpha = 0.65f), RoundedCornerShape(28.dp))
+                .padding(26.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top Warning Badge
+            // Top Locked Badge
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
@@ -192,7 +166,7 @@ private fun ReelBlockerShieldComposable(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "LIKHON REEL SHIELD ACTIVE",
+                    text = "REELS BLOCKED",
                     color = BadgeTextRed,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -200,11 +174,11 @@ private fun ReelBlockerShieldComposable(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // Mascot in Stage 4 Zombie Rot state to deter further scrolling
+            // Mascot in Stage 4 Zombie Rot state
             Box(
-                modifier = Modifier.size(145.dp),
+                modifier = Modifier.size(150.dp),
                 contentAlignment = Alignment.Center
             ) {
                 BrainMascotCanvas(
@@ -214,12 +188,13 @@ private fun ReelBlockerShieldComposable(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = "${platform.displayName} Reels Blocked!",
+                text = "Time Is Up.\n${platform.displayName} Reels Are Blocked.",
                 color = TextPrimaryWhite,
                 fontSize = 24.sp,
+                lineHeight = 30.sp,
                 fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center
             )
@@ -227,22 +202,18 @@ private fun ReelBlockerShieldComposable(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = if (instantBlockMode) {
-                    "Zero-Tolerance Instant Reel Blocker is ON. Likhon automatically backed you out of the video feed to protect your focus."
-                } else {
-                    "You've reached $todayCount / $dailyLimit reels today. Likhon intercepted this scroll to stop brain rot."
-                },
+                text = "Your limit has been reached. Short-form videos are locked.",
                 color = TextSecondaryMuted,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,
                 lineHeight = 20.sp
             )
 
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // Primary Action: Exit to Home Screen
+            // Literally ONLY the "Quit to Home" button — no snooze, no dismiss
             Button(
-                onClick = onGoHomeClick,
+                onClick = onQuitToHomeClick,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = ButtonCream,
                     contentColor = ButtonDarkText
@@ -250,55 +221,18 @@ private fun ReelBlockerShieldComposable(
                 shape = RoundedCornerShape(50),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .height(54.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Home,
                     contentDescription = null,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Quit Scrolling & Go Home",
-                    fontSize = 15.sp,
+                    text = "Quit to Home",
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.ExtraBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Secondary Action: Stay in App (outside of Reels)
-            OutlinedButton(
-                onClick = onDismissClick,
-                shape = RoundedCornerShape(50),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-            ) {
-                Text(
-                    text = "Close Shield (Backed Out of Reels)",
-                    color = TextPrimaryWhite,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Optional 5-minute snooze
-            TextButton(onClick = onSnoozeClick) {
-                Icon(
-                    imageVector = Icons.Default.Timer,
-                    contentDescription = null,
-                    tint = AccentGold,
-                    modifier = Modifier.size(15.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Snooze Blocker for 5 Minutes",
-                    color = AccentGold,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
                 )
             }
         }

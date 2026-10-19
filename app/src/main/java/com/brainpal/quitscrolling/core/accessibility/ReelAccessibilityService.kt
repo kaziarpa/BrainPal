@@ -4,7 +4,6 @@ import android.accessibilityservice.AccessibilityService
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import com.brainpal.quitscrolling.BrainPalApplication
-import com.brainpal.quitscrolling.core.haptics.LikhonHaptics
 import com.brainpal.quitscrolling.core.overlay.FloatingPillOverlayManager
 import com.brainpal.quitscrolling.core.overlay.ReelBlockerOverlayManager
 import com.brainpal.quitscrolling.data.local.datastore.UserPreferencesState
@@ -44,7 +43,6 @@ class ReelAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        // Dismiss any setup guide overlay now that the user successfully enabled the service!
         AccessibilityPermissionHelper.dismissFloatingSetupGuide(this)
 
         val app = applicationContext as? BrainPalApplication ?: return
@@ -68,11 +66,6 @@ class ReelAccessibilityService : AccessibilityService() {
             onExitToHome = {
                 overlayManager?.hideOverlay()
                 performGlobalAction(GLOBAL_ACTION_HOME)
-            },
-            onSnoozeFiveMinutes = {
-                serviceScope.launch(Dispatchers.IO) {
-                    prefsRepository.snoozeBlockerForMinutes(5)
-                }
             }
         )
 
@@ -87,79 +80,92 @@ class ReelAccessibilityService : AccessibilityService() {
                 latestTodayCount.value = count
             }
         }
-        // NOTE: Do NOT call overlayManager.showOverlay() here!
-        // The floating pill turns on ONLY when opening monitored social apps / watching Reels.
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         val pkg = event.packageName?.toString() ?: return
 
-        // Ignore our own overlay / system UI transient events so they don't flicker the pill
         if (pkg == packageName) return
         val lowerPkg = pkg.lowercase()
         if (IGNORED_SYSTEM_PACKAGES.any { lowerPkg.contains(it) }) return
 
         val platform = SocialPlatform.fromPackageName(pkg)
 
-        // 1. Handle App / Window Transitions: Hide Pill immediately when leaving monitored apps!
+        // 1. Handle App / Window Transitions: Hide Pill & Reset Session when leaving monitored apps
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            currentForegroundPlatform = platform
             if (platform == null) {
+                currentForegroundPlatform = null
+                scrollDetector.onAppExited(null)
                 overlayManager?.hideOverlay()
                 blockerOverlayManager?.hideBlockerShield()
                 return
-            } else {
-                val prefs = latestPrefs.value
-                val root = rootInActiveWindow
-                val inReels = scrollDetector.isReelOrVideoScreenActive(root, platform)
-
-                if (!prefs.onlyShowPillInReels || inReels) {
-                    overlayManager?.showOverlay(initialOffsetYDp = prefs.pillOffsetYDp)
-                }
-
-                // If Instant Block Mode is active and the user just opened a Reels/Video screen, block immediately!
-                if (inReels && shouldBlockPlatformNow(platform, latestTodayCount.value, prefs)) {
-                    triggerReelBlocker(platform, latestTodayCount.value, prefs)
-                    return
-                }
             }
+            currentForegroundPlatform = platform
         }
 
         if (platform == null) {
             if (currentForegroundPlatform != null) {
                 currentForegroundPlatform = null
+                scrollDetector.onAppExited(null)
                 overlayManager?.hideOverlay()
+                blockerOverlayManager?.hideBlockerShield()
             }
             return
         }
 
         currentForegroundPlatform = platform
         val prefs = latestPrefs.value
+        val app = applicationContext as? BrainPalApplication ?: return
 
-        // 2. On content change inside a monitored social app, check if user entered or exited Reels view
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            if (!prefs.onlyShowPillInReels) {
+        // 2. Evaluate Window State / Content Change to:
+        //    - Count the VERY FIRST reel when opening Facebook Shorts / IG Reels / YT Shorts / X Videos
+        //    - Control Floating Pill visibility
+        //    - Trigger Reel Blocker if limit is already reached
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        ) {
+            val (isReelActive, initialOrSettledResult) = scrollDetector.evaluateWindowForInitialReelOrVisibility(
+                packageName = pkg,
+                rootNode = rootInActiveWindow
+            )
+
+            if (!prefs.onlyShowPillInReels || isReelActive) {
                 overlayManager?.showOverlay(initialOffsetYDp = prefs.pillOffsetYDp)
+            } else {
+                overlayManager?.hideOverlay()
+            }
+
+            if (initialOrSettledResult != null) {
+                val updatedCount = latestTodayCount.value + 1
+                serviceScope.launch(Dispatchers.IO) {
+                    app.container.scrollRepository.recordScroll(
+                        platform = initialOrSettledResult.platform,
+                        contentType = initialOrSettledResult.contentType,
+                        packageName = initialOrSettledResult.packageName
+                    )
+                }
+                if (shouldBlockPlatformNow(platform, updatedCount, prefs)) {
+                    triggerReelBlocker(platform, updatedCount, prefs)
+                    return
+                }
+            } else if (isReelActive && shouldBlockPlatformNow(platform, latestTodayCount.value, prefs)) {
+                triggerReelBlocker(platform, latestTodayCount.value, prefs)
+                return
             }
         }
 
-        // 3. Evaluate Scroll Events across Instagram, YouTube, Facebook, and X
+        // 3. Evaluate Scroll Events (with NO vibration when counting reels in social apps!)
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
-            val rootNode = rootInActiveWindow
             val result = scrollDetector.evaluateScrollEvent(
                 event = event,
-                rootNode = rootNode
+                rootNode = rootInActiveWindow
             )
 
             if (result != null) {
-                // Ensure the Dynamic Island Floating Pill is visible now that the user is scrolling Reels/Videos
                 overlayManager?.showOverlay(initialOffsetYDp = prefs.pillOffsetYDp)
-
-                val app = applicationContext as? BrainPalApplication ?: return
                 val updatedCount = latestTodayCount.value + 1
 
-                // Record the scroll event
                 serviceScope.launch(Dispatchers.IO) {
                     app.container.scrollRepository.recordScroll(
                         platform = result.platform,
@@ -168,12 +174,11 @@ class ReelAccessibilityService : AccessibilityService() {
                     )
                 }
 
-                // Check if Reel Blocker should intercept and block this Reel/Video
+                // Check if Reel Blocker should block this Reel
                 if (shouldBlockPlatformNow(result.platform, updatedCount, prefs)) {
                     triggerReelBlocker(result.platform, updatedCount, prefs)
-                } else if (prefs.hapticFeedbackEnabled) {
-                    LikhonHaptics.gentleScrollCountPulse(this)
                 }
+                // NOTE: No vibration on background reel counting per user request!
             }
         }
     }
@@ -185,7 +190,6 @@ class ReelAccessibilityService : AccessibilityService() {
     ): Boolean {
         if (!prefs.blockerEnabled) return false
         if (!prefs.isPlatformBlocked(platform)) return false
-        if (prefs.isSnoozeActive()) return false
 
         return prefs.instantBlockMode || (currentOrUpdatedCount >= prefs.dailyGoalLimit)
     }
@@ -196,12 +200,8 @@ class ReelAccessibilityService : AccessibilityService() {
         prefs: UserPreferencesState
     ) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastBlockTriggerElapsedRealtime < 1200L) return
+        if (now - lastBlockTriggerElapsedRealtime < 1000L) return
         lastBlockTriggerElapsedRealtime = now
-
-        if (prefs.hapticFeedbackEnabled) {
-            LikhonHaptics.blockerShieldPulse(this)
-        }
 
         val app = applicationContext as? BrainPalApplication
         serviceScope.launch(Dispatchers.IO) {
@@ -214,9 +214,7 @@ class ReelAccessibilityService : AccessibilityService() {
 
         blockerOverlayManager?.showBlockerShield(
             platform = platform,
-            todayCount = todayCount,
-            dailyLimit = prefs.dailyGoalLimit,
-            instantBlockMode = prefs.instantBlockMode
+            todayCount = todayCount
         )
     }
 
