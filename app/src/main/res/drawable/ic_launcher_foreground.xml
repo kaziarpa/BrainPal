@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer golden aura ring -->
+    <path
+        android:fillColor="#22E5C07B"
+        android:pathData="M54,54m-32,0a32,32 0,1 1,64 0a32,32 0,1 1,-64 0" />
+    <!-- Brain Left & Right Hemispheres -->
+    <path
+        android:fillColor="#FF8DA9"
+        android:strokeColor="#4A1525"
+        android:strokeWidth="2.5"
+        android:pathData="M34,48 C27,48 25,39 31,34 C31,27 40,24 47,28 C50,25 58,25 61,28 C68,24 77,27 77,34 C83,39 81,48 74,48 C78,55 73,64 65,64 L43,64 C35,64 30,55 34,48 Z" />
+    <!-- Brain Folds / Gyri Accents -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#4A1525"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M54,27 L54,37 M38,36 Q44,33 46,39 M70,36 Q64,33 62,39" />
+    <!-- Left Anime Eye -->
+    <path
+        android:fillColor="#2A0F18"
+        android:pathData="M44,47m-4.2,0a4.2,4.2 0,1 1,8.4 0a4.2,4.2 0,1 1,-8.4 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M45.4,45.5m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0" />
+    <!-- Right Anime Eye -->
+    <path
+        android:fillColor="#2A0F18"
+        android:pathData="M64,47m-4.2,0a4.2,4.2 0,1 1,8.4 0a4.2,4.2 0,1 1,-8.4 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M65.4,45.5m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0" />
+    <!-- Cute Expression Mouth -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#4A1525"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M50,53 Q54,56.5 58,53" />
+    <!-- Dynamic Island Counter Pill Badge at Bottom -->
+    <path
+        android:fillColor="#4A181B"
+        android:strokeColor="#E5C07B"
+        android:strokeWidth="1.8"
+        android:pathData="M42,66 L66,66 A8,8 0 0,1 74,74 L74,74 A8,8 0 0,1 66,82 L42,82 A8,8 0 0,1 34,74 L34,74 A8,8 0 0,1 42,66 Z" />
+    <!-- Lightning Bolt Inside Badge -->
+    <path
+        android:fillColor="#E5C07B"
+        android:pathData="M55,68 L49,75 L54,75 L52,80 L59,73 L54,73 Z" />
+</vector>

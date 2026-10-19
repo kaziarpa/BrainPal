@@ -1,0 +1,6 @@
+{
+  "name": "BrainPal",
+  "description": "Real-time short-form video & reel scroll tracker with a Dynamic Island overlay, 4-stage Brain Rot mascot, fitness-style analytics, 1v1 friend battles, and home screen widget.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
