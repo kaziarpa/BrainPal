@@ -226,13 +226,18 @@ class ReelAccessibilityService : AccessibilityService() {
         // 2. Detect when the user clicks on a Reel in the feed (like Screenshot 2) or taps the Reels/Shorts tab
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             scrollDetector.evaluateClickEvent(event, rootInActiveWindow)
-            // Schedule a follow-up check 350ms after the click so once the Reel player animates open,
+            // Schedule follow-up checks at 350ms and 750ms after the click so once the Reel player animates open,
             // the initial Reel is immediately counted and checked against the Blocker limit!
             mainHandler.postDelayed({
                 if (currentForegroundPlatform == platform && SystemClock.elapsedRealtime() >= reelSectionExitGraceUntilRealtime) {
                     checkWindowForInitialReel(pkg, platform, app)
                 }
             }, 350L)
+            mainHandler.postDelayed({
+                if (currentForegroundPlatform == platform && SystemClock.elapsedRealtime() >= reelSectionExitGraceUntilRealtime) {
+                    checkWindowForInitialReel(pkg, platform, app)
+                }
+            }, 750L)
             return
         }
 
