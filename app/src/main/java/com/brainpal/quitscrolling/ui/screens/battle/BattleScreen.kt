@@ -57,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.brainpal.quitscrolling.core.haptics.LikhonHaptics
 import com.brainpal.quitscrolling.ui.components.BrainMascotCanvas
 import com.brainpal.quitscrolling.ui.theme.AccentGold
 import com.brainpal.quitscrolling.ui.theme.BadgeTextRed
@@ -92,7 +93,7 @@ fun BattleScreen(
             .padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Header (matches 0:22-0:23 in video)
+        // Header
         Text(
             text = "Pick your scroll rival",
             color = Color(0xFFB3A68E),
@@ -165,7 +166,6 @@ fun BattleScreen(
                 val w = size.width
                 val h = size.height
 
-                // Subtle split background tint on right side
                 val rightHalfPath = Path().apply {
                     moveTo(w * 0.58f, 0f)
                     lineTo(w, 0f)
@@ -178,7 +178,6 @@ fun BattleScreen(
                     color = Color(0xFF2B181E).copy(alpha = 0.45f)
                 )
 
-                // Golden lightning bolt slash across the center
                 val slashGlowPath = Path().apply {
                     moveTo(w * 0.58f, 0f)
                     lineTo(w * 0.49f, h * 0.46f)
@@ -205,7 +204,6 @@ fun BattleScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left Contender: YOU
                 ContenderColumn(
                     label = uiState.userNickname,
                     reelCount = uiState.userTodayCount,
@@ -217,12 +215,11 @@ fun BattleScreen(
                         .testTag("contender_you_column")
                 )
 
-                // Center VS Emblem
                 Box(
                     modifier = Modifier
                         .size(46.dp)
                         .clip(CircleShape)
-                        .background( Color(0xFF1F1912))
+                        .background(Color(0xFF1F1912))
                         .border(2.dp, WarmGoldTitle, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
@@ -234,7 +231,6 @@ fun BattleScreen(
                     )
                 }
 
-                // Right Contender: FRIEND
                 ContenderColumn(
                     label = uiState.rivalName,
                     reelCount = uiState.rivalCount,
@@ -280,7 +276,10 @@ fun BattleScreen(
                             color = if (isSelected) AccentGold else CardBorder,
                             shape = RoundedCornerShape(14.dp)
                         )
-                        .clickable { viewModel.setCustomRival(rName, rCount) }
+                        .clickable {
+                            LikhonHaptics.softTap(context)
+                            viewModel.setCustomRival(rName, rCount)
+                        }
                         .padding(vertical = 10.dp, horizontal = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -307,9 +306,10 @@ fun BattleScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Primary CTA Button: "⚔️ CHALLENGE YOUR FRIEND" (background = #D9BF93, text color #1A140B)
+        // Primary CTA Button: "⚔️ CHALLENGE YOUR FRIEND"
         Button(
             onClick = {
+                LikhonHaptics.gentleScrollCountPulse(context)
                 customRivalName = uiState.rivalName
                 customRivalCountText = uiState.rivalCount.toString()
                 importErrorText = null
@@ -369,7 +369,7 @@ fun BattleScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "1. Share your live Battle Code with a friend so they can race against your daily reel count:",
+                        text = "1. Share your live Likhon Battle Code with a friend so they can race against your daily reel count:",
                         color = TextSecondaryMuted,
                         fontSize = 13.sp
                     )
@@ -392,11 +392,12 @@ fun BattleScreen(
 
                     Button(
                         onClick = {
+                            LikhonHaptics.softTap(context)
                             val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
                                 putExtra(Intent.EXTRA_TEXT, viewModel.generateShareMessage())
                             }
-                            val shareIntent = Intent.createChooser(sendIntent, "Challenge Friend on BrainPal")
+                            val shareIntent = Intent.createChooser(sendIntent, "Challenge Friend on Likhon")
                             runCatching { context.startActivity(shareIntent) }
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -434,7 +435,7 @@ fun BattleScreen(
                             importCodeInput = it
                             importErrorText = null
                         },
-                        placeholder = { Text("Paste BRAINPAL-... code", fontSize = 12.sp) },
+                        placeholder = { Text("Paste LIKHON-... code", fontSize = 12.sp) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = AccentGold,
@@ -457,12 +458,13 @@ fun BattleScreen(
 
                     OutlinedButton(
                         onClick = {
+                            LikhonHaptics.softTap(context)
                             val ok = viewModel.importFriendBattleCode(importCodeInput)
                             if (ok) {
                                 importCodeInput = ""
                                 showChallengeDialog = false
                             } else {
-                                importErrorText = "Invalid Battle Code format. Try pasting a valid BRAINPAL-... code."
+                                importErrorText = "Invalid Battle Code format. Try pasting a valid LIKHON-... code."
                             }
                         },
                         shape = RoundedCornerShape(50),
@@ -526,6 +528,7 @@ fun BattleScreen(
 
                     OutlinedButton(
                         onClick = {
+                            LikhonHaptics.softTap(context)
                             val cnt = customRivalCountText.toIntOrNull() ?: 50
                             viewModel.setCustomRival(customRivalName, cnt)
                             showChallengeDialog = false
@@ -549,7 +552,12 @@ fun BattleScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showChallengeDialog = false }) {
+                TextButton(
+                    onClick = {
+                        LikhonHaptics.softTap(context)
+                        showChallengeDialog = false
+                    }
+                ) {
                     Text("Close", color = AccentGold, fontWeight = FontWeight.Bold)
                 }
             }
@@ -571,7 +579,6 @@ private fun ContenderColumn(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Floating Mini Brain Mascot above contender
         Box(
             modifier = Modifier
                 .size(64.dp)
@@ -585,7 +592,6 @@ private fun ContenderColumn(
             )
         }
 
-        // Stylized Character Bust Avatar
         Box(
             modifier = Modifier.size(96.dp),
             contentAlignment = Alignment.Center
@@ -595,14 +601,12 @@ private fun ContenderColumn(
                 val h = size.height
                 val cx = w / 2f
 
-                // Outer ring glow
                 drawCircle(
                     color = if (isWinner) StatusActiveGreen.copy(alpha = 0.22f) else avatarPrimaryColor.copy(alpha = 0.16f),
                     radius = w * 0.46f,
                     center = Offset(cx, h * 0.52f)
                 )
 
-                // Stylized hoodie shoulders
                 val shouldersPath = Path().apply {
                     moveTo(w * 0.16f, h * 0.90f)
                     cubicTo(
@@ -620,7 +624,6 @@ private fun ContenderColumn(
                     style = Fill
                 )
 
-                // Character head silhouette
                 drawCircle(
                     color = Color(0xFFF3D6C6),
                     radius = w * 0.20f,
@@ -631,7 +634,6 @@ private fun ContenderColumn(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Gold Pill Badge with reelCount
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
@@ -661,7 +663,6 @@ private fun ContenderColumn(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Contender Name ("YOU" / "FRIEND")
         Text(
             text = label,
             color = TextPrimaryWhite,

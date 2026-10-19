@@ -44,7 +44,7 @@ if [ ! -f "my-upload-key.jks" ]; then
     -keyalg RSA \
     -keysize 2048 \
     -validity 10000 \
-    -dname "CN=BrainPal Release,O=BrainPal,C=US"
+    -dname "CN=Likhon Release,O=Likhon,C=US"
 fi
 
 echo "=== [3/4] Building Debug & Release APKs with Gradle ==="
@@ -60,13 +60,13 @@ DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1 || true)
 RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1 || true)
 
 if [ -n "$DEBUG_APK" ]; then
-  cp "$DEBUG_APK" "dist/BrainPal-debug.apk"
-  echo "Copied $DEBUG_APK -> dist/BrainPal-debug.apk"
+  cp "$DEBUG_APK" "dist/Likhon-debug.apk"
+  echo "Copied $DEBUG_APK -> dist/Likhon-debug.apk"
 fi
 
 if [ -n "$RELEASE_APK" ]; then
-  cp "$RELEASE_APK" "dist/BrainPal-release.apk"
-  echo "Copied $RELEASE_APK -> dist/BrainPal-release.apk"
+  cp "$RELEASE_APK" "dist/Likhon-release.apk"
+  echo "Copied $RELEASE_APK -> dist/Likhon-release.apk"
 fi
 
 ls -lh dist/

@@ -1,6 +1,6 @@
 <resources>
-    <string name="app_name">BrainPal</string>
-    <string name="accessibility_service_label">BrainPal Scroll Tracker</string>
-    <string name="accessibility_service_description">Monitors vertical scroll events inside Instagram, YouTube, Facebook, and X to count short-form reels and videos in real time and display the live BrainPal Dynamic Island pill counter.</string>
+    <string name="app_name">Likhon</string>
+    <string name="accessibility_service_label">Likhon Scroll Tracker &amp; Blocker</string>
+    <string name="accessibility_service_description">Monitors vertical scroll events inside Instagram, YouTube, Facebook, and X (Twitter) to count and block short-form reels and videos in real time and display the live Likhon Dynamic Island pill counter.</string>
     <string name="widget_description">Displays your live daily reel count and 4-stage Brain Rot mascot right on your home screen.</string>
 </resources>

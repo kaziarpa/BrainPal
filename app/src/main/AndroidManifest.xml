@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <application
         android:name="com.brainpal.quitscrolling.BrainPalApplication"
         android:allowBackup="true"
@@ -24,7 +27,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Real-Time Multi-App Reel & Video Accessibility Service -->
+        <!-- Real-Time Multi-App Reel & Video Accessibility Service & Blocker -->
         <service
             android:name="com.brainpal.quitscrolling.core.accessibility.ReelAccessibilityService"
             android:exported="true"

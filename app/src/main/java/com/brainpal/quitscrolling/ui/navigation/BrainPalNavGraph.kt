@@ -24,12 +24,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.brainpal.quitscrolling.core.haptics.LikhonHaptics
 import com.brainpal.quitscrolling.di.AppContainer
 import com.brainpal.quitscrolling.ui.screens.battle.BattleScreen
 import com.brainpal.quitscrolling.ui.screens.battle.BattleViewModel
@@ -41,7 +42,6 @@ import com.brainpal.quitscrolling.ui.theme.AccentGold
 import com.brainpal.quitscrolling.ui.theme.ButtonDarkText
 import com.brainpal.quitscrolling.ui.theme.CardSurface
 import com.brainpal.quitscrolling.ui.theme.ObsidianBackground
-import com.brainpal.quitscrolling.ui.theme.TextPrimaryWhite
 import com.brainpal.quitscrolling.ui.theme.TextSecondaryMuted
 
 enum class BrainPalDestination(
@@ -79,6 +79,7 @@ fun BrainPalNavGraph(
     appContainer: AppContainer,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var currentTab by rememberSaveable { mutableStateOf(BrainPalDestination.YOU) }
 
     val homeViewModel: HomeViewModel = viewModel(
@@ -101,6 +102,7 @@ fun BrainPalNavGraph(
 
     if (currentTab != BrainPalDestination.YOU) {
         BackHandler {
+            LikhonHaptics.softTap(context)
             currentTab = BrainPalDestination.YOU
         }
     }
@@ -118,7 +120,10 @@ fun BrainPalNavGraph(
                     val selected = currentTab == destination
                     NavigationBarItem(
                         selected = selected,
-                        onClick = { currentTab = destination },
+                        onClick = {
+                            LikhonHaptics.softTap(context)
+                            currentTab = destination
+                        },
                         icon = {
                             Icon(
                                 imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
@@ -154,7 +159,10 @@ fun BrainPalNavGraph(
             BrainPalDestination.STATS -> {
                 StatsScreen(
                     viewModel = statsViewModel,
-                    onBackClick = { currentTab = BrainPalDestination.YOU },
+                    onBackClick = {
+                        LikhonHaptics.softTap(context)
+                        currentTab = BrainPalDestination.YOU
+                    },
                     modifier = Modifier.padding(innerPadding)
                 )
             }

@@ -1,6 +1,6 @@
 {
-  "name": "BrainPal",
-  "description": "Real-time short-form video & reel scroll tracker with a Dynamic Island overlay, 4-stage Brain Rot mascot, fitness-style analytics, 1v1 friend battles, and home screen widget.",
+  "name": "Likhon",
+  "description": "Real-time short-form video & reel scroll tracker and blocker for Instagram, YouTube, Facebook, and X with Dynamic Island overlay, 4-stage Brain Rot mascot, gentle haptics, analytics, and 1v1 battles.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

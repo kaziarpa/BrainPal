@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "BrainPal"
+rootProject.name = "Likhon"
 
 include(":app")

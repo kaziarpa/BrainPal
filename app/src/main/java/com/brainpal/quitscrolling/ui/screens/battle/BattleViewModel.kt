@@ -38,7 +38,6 @@ class BattleViewModel(
         statusMessageFlow
     ) { todayCount, previewOverride, prefs, statusMsg ->
         val activeUserCount = previewOverride ?: todayCount
-        // In BrainPal, lower reel count wins (less brain rot!)
         BattleUiState(
             userNickname = prefs.userNickname,
             userTodayCount = activeUserCount,
@@ -58,19 +57,19 @@ class BattleViewModel(
         val json = JSONObject().apply {
             put("name", state.userNickname)
             put("reels", state.userTodayCount)
-            put("app", "BrainPal")
+            put("app", "Likhon")
         }.toString()
         val encoded = Base64.encodeToString(
             json.toByteArray(StandardCharsets.UTF_8),
             Base64.NO_WRAP
         )
-        return "BRAINPAL-$encoded"
+        return "LIKHON-$encoded"
     }
 
     fun generateShareMessage(): String {
         val code = generateShareBattleCode()
         val state = uiState.value
-        return "⚔️ I've scrolled ${state.userTodayCount} reels today on BrainPal! Can you keep your Brain Rot lower than mine?\n\nImport my Rival Battle Code in BrainPal:\n$code"
+        return "⚔️ I've scrolled ${state.userTodayCount} reels today on Likhon! Can you keep your Brain Rot lower than mine?\n\nImport my Rival Battle Code in Likhon:\n$code"
     }
 
     fun importFriendBattleCode(rawInput: String): Boolean {
@@ -78,10 +77,14 @@ class BattleViewModel(
         if (trimmed.isEmpty()) return false
 
         return try {
-            val base64Part = if (trimmed.contains("BRAINPAL-")) {
-                trimmed.substringAfter("BRAINPAL-").trim().substringBefore(" ").substringBefore("\n")
-            } else {
-                trimmed
+            val base64Part = when {
+                trimmed.contains("LIKHON-") -> {
+                    trimmed.substringAfter("LIKHON-").trim().substringBefore(" ").substringBefore("\n")
+                }
+                trimmed.contains("BRAINPAL-") -> {
+                    trimmed.substringAfter("BRAINPAL-").trim().substringBefore(" ").substringBefore("\n")
+                }
+                else -> trimmed
             }
             val decodedBytes = Base64.decode(base64Part, Base64.DEFAULT)
             val jsonStr = String(decodedBytes, StandardCharsets.UTF_8)

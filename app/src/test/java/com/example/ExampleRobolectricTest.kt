@@ -18,7 +18,7 @@ class ExampleRobolectricTest {
     fun `read string from context`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val appName = context.getString(R.string.app_name)
-        assertEquals("BrainPal", appName)
+        assertEquals("Likhon", appName)
     }
 
     @Test
@@ -34,11 +34,14 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `social platform lookup maps target packages accurately`() {
+    fun `social platform lookup maps target packages accurately including X variants`() {
         assertEquals(SocialPlatform.INSTAGRAM, SocialPlatform.fromPackageName("com.instagram.android"))
+        assertEquals(SocialPlatform.INSTAGRAM, SocialPlatform.fromPackageName("com.instagram.lite"))
         assertEquals(SocialPlatform.YOUTUBE, SocialPlatform.fromPackageName("com.google.android.youtube"))
         assertEquals(SocialPlatform.FACEBOOK, SocialPlatform.fromPackageName("com.facebook.katana"))
         assertEquals(SocialPlatform.FACEBOOK, SocialPlatform.fromPackageName("com.facebook.lite"))
         assertEquals(SocialPlatform.X_TWITTER, SocialPlatform.fromPackageName("com.twitter.android"))
+        assertEquals(SocialPlatform.X_TWITTER, SocialPlatform.fromPackageName("com.twitter.android.lite"))
+        assertEquals(SocialPlatform.X_TWITTER, SocialPlatform.fromPackageName("com.x.android"))
     }
 }

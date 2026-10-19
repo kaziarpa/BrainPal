@@ -34,12 +34,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.brainpal.quitscrolling.core.haptics.LikhonHaptics
 import com.brainpal.quitscrolling.ui.components.BrainMascotCanvas
 import com.brainpal.quitscrolling.ui.components.PlatformBrandIcon
 import com.brainpal.quitscrolling.ui.theme.AccentGold
@@ -59,6 +61,7 @@ fun StatsScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     Column(
         modifier = modifier
@@ -73,7 +76,10 @@ fun StatsScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             IconButton(
-                onClick = onBackClick,
+                onClick = {
+                    LikhonHaptics.softTap(context)
+                    onBackClick()
+                },
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
@@ -111,7 +117,10 @@ fun StatsScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
-                onClick = { viewModel.previousWeek() },
+                onClick = {
+                    LikhonHaptics.softTap(context)
+                    viewModel.previousWeek()
+                },
                 modifier = Modifier.testTag("prev_week_button")
             ) {
                 Icon(
@@ -129,7 +138,10 @@ fun StatsScreen(
             )
 
             IconButton(
-                onClick = { viewModel.nextWeek() },
+                onClick = {
+                    LikhonHaptics.softTap(context)
+                    viewModel.nextWeek()
+                },
                 enabled = uiState.canGoNextWeek,
                 modifier = Modifier.testTag("next_week_button")
             ) {
@@ -143,7 +155,7 @@ fun StatsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Weekly Bar Chart Card + Total Counter (matches 0:25-0:27)
+        // Weekly Bar Chart Card + Total Counter
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -174,7 +186,10 @@ fun StatsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { viewModel.selectDay(dayBar.date) }
+                            .clickable {
+                                LikhonHaptics.microTick(context)
+                                viewModel.selectDay(dayBar.date)
+                            }
                             .padding(horizontal = 6.dp, vertical = 4.dp)
                             .testTag("day_bar_column_$idx")
                     ) {
@@ -291,6 +306,7 @@ fun StatsScreen(
                         .clip(RoundedCornerShape(18.dp))
                         .background(CardSurface)
                         .border(1.dp, CardBorder, RoundedCornerShape(18.dp))
+                        .clickable { LikhonHaptics.microTick(context) }
                         .padding(horizontal = 16.dp, vertical = 14.dp)
                         .testTag("platform_row_${item.platform.name}"),
                     verticalAlignment = Alignment.CenterVertically,
