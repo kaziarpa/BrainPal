@@ -18,11 +18,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Block
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -38,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.brainpal.quitscrolling.core.haptics.LikhonHaptics
 import com.brainpal.quitscrolling.data.model.SocialPlatform
 import com.brainpal.quitscrolling.ui.components.BrainMascotCanvas
+import com.brainpal.quitscrolling.ui.theme.AccentGold
 import com.brainpal.quitscrolling.ui.theme.BadgeMaroon
 import com.brainpal.quitscrolling.ui.theme.BadgeTextRed
 import com.brainpal.quitscrolling.ui.theme.ButtonCream
@@ -48,7 +51,8 @@ import com.brainpal.quitscrolling.ui.theme.TextSecondaryMuted
 
 class ReelBlockerOverlayManager(
     private val context: Context,
-    private val onExitToHome: () -> Unit
+    private val onCloseApp: (SocialPlatform) -> Unit,
+    private val onCloseReelSection: (SocialPlatform) -> Unit
 ) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var composeView: ComposeView? = null
@@ -84,10 +88,15 @@ class ReelBlockerOverlayManager(
                 ReelBlockerShieldComposable(
                     platform = platform,
                     todayCount = todayCount,
-                    onQuitToHomeClick = {
+                    onCloseAppClick = {
                         LikhonHaptics.softTap(context)
                         hideBlockerShield()
-                        onExitToHome()
+                        onCloseApp(platform)
+                    },
+                    onCloseReelSectionClick = {
+                        LikhonHaptics.softTap(context)
+                        hideBlockerShield()
+                        onCloseReelSection(platform)
                     }
                 )
             }
@@ -104,14 +113,16 @@ class ReelBlockerOverlayManager(
     }
 
     fun hideBlockerShield() {
-        if (!isShowing) return
+        if (!isShowing && composeView == null) return
         composeView?.let { view ->
             runCatching { windowManager.removeView(view) }
         }
         lifecycleOwner?.apply {
-            onPause()
-            onStop()
-            onDestroy()
+            runCatching {
+                onPause()
+                onStop()
+                onDestroy()
+            }
         }
         composeView = null
         lifecycleOwner = null
@@ -123,8 +134,18 @@ class ReelBlockerOverlayManager(
 private fun ReelBlockerShieldComposable(
     platform: SocialPlatform,
     todayCount: Int,
-    onQuitToHomeClick: () -> Unit
+    onCloseAppClick: () -> Unit,
+    onCloseReelSectionClick: () -> Unit
 ) {
+    val appShortName = when (platform) {
+        SocialPlatform.X_TWITTER -> "X"
+        else -> platform.displayName
+    }
+    val sectionActionLabel = when (platform) {
+        SocialPlatform.YOUTUBE -> "Close Shorts Section"
+        else -> "Close Reel Section"
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -178,7 +199,7 @@ private fun ReelBlockerShieldComposable(
 
             // Mascot in Stage 4 Zombie Rot state
             Box(
-                modifier = Modifier.size(150.dp),
+                modifier = Modifier.size(145.dp),
                 contentAlignment = Alignment.Center
             ) {
                 BrainMascotCanvas(
@@ -191,10 +212,10 @@ private fun ReelBlockerShieldComposable(
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = "Time Is Up.\n${platform.displayName} Reels Are Blocked.",
+                text = "Time Is Up.\n$appShortName Reels Are Blocked.",
                 color = TextPrimaryWhite,
-                fontSize = 24.sp,
-                lineHeight = 30.sp,
+                fontSize = 23.sp,
+                lineHeight = 29.sp,
                 fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center
             )
@@ -211,9 +232,9 @@ private fun ReelBlockerShieldComposable(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Literally ONLY the "Quit to Home" button — no snooze, no dismiss
+            // Option 1: Close <App Name> (closes the app / exits to Home)
             Button(
-                onClick = onQuitToHomeClick,
+                onClick = onCloseAppClick,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = ButtonCream,
                     contentColor = ButtonDarkText
@@ -224,15 +245,40 @@ private fun ReelBlockerShieldComposable(
                     .height(54.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Home,
+                    imageVector = Icons.Default.Close,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Quit to Home",
+                    text = "Close $appShortName",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.ExtraBold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Option 2: Close Reel Section (or Close Shorts Section for YouTube)
+            OutlinedButton(
+                onClick = onCloseReelSectionClick,
+                shape = RoundedCornerShape(50),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                    contentDescription = null,
+                    tint = AccentGold,
+                    modifier = Modifier.size(19.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = sectionActionLabel,
+                    color = TextPrimaryWhite,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }

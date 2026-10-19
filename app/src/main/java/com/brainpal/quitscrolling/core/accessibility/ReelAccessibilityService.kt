@@ -1,6 +1,10 @@
 package com.brainpal.quitscrolling.core.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.app.ActivityManager
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import com.brainpal.quitscrolling.BrainPalApplication
@@ -19,6 +23,7 @@ import kotlinx.coroutines.launch
 class ReelAccessibilityService : AccessibilityService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var overlayManager: FloatingPillOverlayManager? = null
     private var blockerOverlayManager: ReelBlockerOverlayManager? = null
     private lateinit var scrollDetector: VideoScrollDetector
@@ -27,17 +32,21 @@ class ReelAccessibilityService : AccessibilityService() {
     private val latestTodayCount = MutableStateFlow(0)
 
     private var currentForegroundPlatform: SocialPlatform? = null
+    private var currentForegroundPackage: String? = null
     private var lastBlockTriggerElapsedRealtime: Long = 0L
+    private var reelSectionExitGraceUntilRealtime: Long = 0L
 
     companion object {
         private val IGNORED_SYSTEM_PACKAGES = listOf(
             "com.android.systemui",
+            "android",
             "inputmethod",
             "keyboard",
             "gboard",
             "swiftkey",
             "permissioncontroller",
-            "packageinstaller"
+            "packageinstaller",
+            "samsung.android.honeyboard"
         )
     }
 
@@ -63,9 +72,28 @@ class ReelAccessibilityService : AccessibilityService() {
 
         blockerOverlayManager = ReelBlockerOverlayManager(
             context = this,
-            onExitToHome = {
+            onCloseApp = { platform ->
+                // Option 1: Close Facebook / App (exits to Home screen and terminates background process)
+                val targetPkg = currentForegroundPackage
                 overlayManager?.hideOverlay()
+                performGlobalAction(GLOBAL_ACTION_BACK)
                 performGlobalAction(GLOBAL_ACTION_HOME)
+                mainHandler.postDelayed({
+                    val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                    platform.packageNames.forEach { pkg ->
+                        runCatching { am?.killBackgroundProcesses(pkg) }
+                    }
+                    if (targetPkg != null) {
+                        runCatching { am?.killBackgroundProcesses(targetPkg) }
+                    }
+                }, 300L)
+            },
+            onCloseReelSection = { _ ->
+                // Option 2: Close Reel Section / Close Shorts Section
+                // Backs out of the Reels/Shorts player so the user can still use the rest of the app
+                reelSectionExitGraceUntilRealtime = SystemClock.elapsedRealtime() + 3500L
+                scrollDetector.onAppExited(currentForegroundPackage)
+                performGlobalAction(GLOBAL_ACTION_BACK)
             }
         )
 
@@ -86,76 +114,79 @@ class ReelAccessibilityService : AccessibilityService() {
         if (event == null) return
         val pkg = event.packageName?.toString() ?: return
 
+        // Ignore events from our own package or transient system UI overlays (volume, status bar, keyboard)
         if (pkg == packageName) return
         val lowerPkg = pkg.lowercase()
-        if (IGNORED_SYSTEM_PACKAGES.any { lowerPkg.contains(it) }) return
+        if (IGNORED_SYSTEM_PACKAGES.any { lowerPkg == it || lowerPkg.contains(it) }) return
 
         val platform = SocialPlatform.fromPackageName(pkg)
 
-        // 1. Handle App / Window Transitions: Hide Pill & Reset Session when leaving monitored apps
+        // 1. Handle App / Window Transitions
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             if (platform == null) {
+                // User switched to Launcher or a non-social app -> hide floating pill & blocker shield
                 currentForegroundPlatform = null
+                currentForegroundPackage = null
                 scrollDetector.onAppExited(null)
                 overlayManager?.hideOverlay()
                 blockerOverlayManager?.hideBlockerShield()
                 return
             }
+
+            // User is inside a monitored social app (Facebook, Instagram, YouTube, or X)!
+            // Always show the floating counter pill so it never disappears while inside the app.
             currentForegroundPlatform = platform
+            currentForegroundPackage = pkg
+            val prefs = latestPrefs.value
+            overlayManager?.showOverlay(initialOffsetYDp = prefs.pillOffsetYDp)
         }
 
         if (platform == null) {
-            if (currentForegroundPlatform != null) {
-                currentForegroundPlatform = null
-                scrollDetector.onAppExited(null)
-                overlayManager?.hideOverlay()
-                blockerOverlayManager?.hideBlockerShield()
-            }
             return
         }
 
         currentForegroundPlatform = platform
+        currentForegroundPackage = pkg
         val prefs = latestPrefs.value
         val app = applicationContext as? BrainPalApplication ?: return
 
-        // 2. Evaluate Window State / Content Change to:
-        //    - Count the VERY FIRST reel when opening Facebook Shorts / IG Reels / YT Shorts / X Videos
-        //    - Control Floating Pill visibility
-        //    - Trigger Reel Blocker if limit is already reached
+        // Ensure the floating pill stays visible whenever active inside Facebook, Instagram, YouTube, or X
+        overlayManager?.showOverlay(initialOffsetYDp = prefs.pillOffsetYDp)
+
+        val now = SystemClock.elapsedRealtime()
+        val inExitGracePeriod = now < reelSectionExitGraceUntilRealtime
+
+        // 2. Evaluate Window State / Content Change to count the VERY FIRST reel on entry
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         ) {
-            val (isReelActive, initialOrSettledResult) = scrollDetector.evaluateWindowForInitialReelOrVisibility(
-                packageName = pkg,
-                rootNode = rootInActiveWindow
-            )
+            if (!inExitGracePeriod) {
+                val (isReelActive, initialOrSettledResult) = scrollDetector.evaluateWindowForInitialReelOrVisibility(
+                    packageName = pkg,
+                    rootNode = rootInActiveWindow
+                )
 
-            if (!prefs.onlyShowPillInReels || isReelActive) {
-                overlayManager?.showOverlay(initialOffsetYDp = prefs.pillOffsetYDp)
-            } else {
-                overlayManager?.hideOverlay()
-            }
-
-            if (initialOrSettledResult != null) {
-                val updatedCount = latestTodayCount.value + 1
-                serviceScope.launch(Dispatchers.IO) {
-                    app.container.scrollRepository.recordScroll(
-                        platform = initialOrSettledResult.platform,
-                        contentType = initialOrSettledResult.contentType,
-                        packageName = initialOrSettledResult.packageName
-                    )
-                }
-                if (shouldBlockPlatformNow(platform, updatedCount, prefs)) {
-                    triggerReelBlocker(platform, updatedCount, prefs)
+                if (initialOrSettledResult != null) {
+                    val updatedCount = latestTodayCount.value + 1
+                    serviceScope.launch(Dispatchers.IO) {
+                        app.container.scrollRepository.recordScroll(
+                            platform = initialOrSettledResult.platform,
+                            contentType = initialOrSettledResult.contentType,
+                            packageName = initialOrSettledResult.packageName
+                        )
+                    }
+                    if (shouldBlockPlatformNow(platform, updatedCount, prefs)) {
+                        triggerReelBlocker(platform, updatedCount)
+                        return
+                    }
+                } else if (isReelActive && shouldBlockPlatformNow(platform, latestTodayCount.value, prefs)) {
+                    triggerReelBlocker(platform, latestTodayCount.value)
                     return
                 }
-            } else if (isReelActive && shouldBlockPlatformNow(platform, latestTodayCount.value, prefs)) {
-                triggerReelBlocker(platform, latestTodayCount.value, prefs)
-                return
             }
         }
 
-        // 3. Evaluate Scroll Events (with NO vibration when counting reels in social apps!)
+        // 3. Evaluate Scroll Events (100% silent — no vibration when counting reels in social apps)
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
             val result = scrollDetector.evaluateScrollEvent(
                 event = event,
@@ -163,7 +194,6 @@ class ReelAccessibilityService : AccessibilityService() {
             )
 
             if (result != null) {
-                overlayManager?.showOverlay(initialOffsetYDp = prefs.pillOffsetYDp)
                 val updatedCount = latestTodayCount.value + 1
 
                 serviceScope.launch(Dispatchers.IO) {
@@ -174,11 +204,9 @@ class ReelAccessibilityService : AccessibilityService() {
                     )
                 }
 
-                // Check if Reel Blocker should block this Reel
                 if (shouldBlockPlatformNow(result.platform, updatedCount, prefs)) {
-                    triggerReelBlocker(result.platform, updatedCount, prefs)
+                    triggerReelBlocker(result.platform, updatedCount)
                 }
-                // NOTE: No vibration on background reel counting per user request!
             }
         }
     }
@@ -196,8 +224,7 @@ class ReelAccessibilityService : AccessibilityService() {
 
     private fun triggerReelBlocker(
         platform: SocialPlatform,
-        todayCount: Int,
-        prefs: UserPreferencesState
+        todayCount: Int
     ) {
         val now = SystemClock.elapsedRealtime()
         if (now - lastBlockTriggerElapsedRealtime < 1000L) return
@@ -206,10 +233,6 @@ class ReelAccessibilityService : AccessibilityService() {
         val app = applicationContext as? BrainPalApplication
         serviceScope.launch(Dispatchers.IO) {
             app?.container?.userPreferencesRepository?.incrementBlockedCount()
-        }
-
-        if (prefs.autoBackOnBlock) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
         }
 
         blockerOverlayManager?.showBlockerShield(

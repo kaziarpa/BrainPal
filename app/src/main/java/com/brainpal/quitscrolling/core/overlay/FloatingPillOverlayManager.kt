@@ -30,6 +30,7 @@ class FloatingPillOverlayManager(
     private var lifecycleOwner: OverlayLifecycleOwner? = null
     private var layoutParams: WindowManager.LayoutParams? = null
     private var isAttached = false
+    private var latestOffsetYDp = 14
 
     private val displayCountFlow = MutableStateFlow(0)
 
@@ -43,13 +44,24 @@ class FloatingPillOverlayManager(
         }
         scope.launch {
             pillOffsetYDpFlow.collect { offsetDp ->
+                latestOffsetYDp = offsetDp
                 updateYOffset(offsetDp)
             }
         }
     }
 
-    fun showOverlay(initialOffsetYDp: Int = 14) {
-        if (isAttached) return
+    fun showOverlay(initialOffsetYDp: Int = latestOffsetYDp) {
+        latestOffsetYDp = initialOffsetYDp
+
+        // If we think we're attached, verify the view is still alive and attached
+        if (isAttached && composeView != null) {
+            return
+        }
+
+        // Clean up any stale reference before attaching fresh
+        if (composeView != null || lifecycleOwner != null) {
+            cleanupInternal()
+        }
 
         val density = context.resources.displayMetrics.density
         val yOffsetPx = (initialOffsetYDp * density).toInt()
@@ -94,6 +106,10 @@ class FloatingPillOverlayManager(
             isAttached = true
         }.onFailure {
             owner.onDestroy()
+            composeView = null
+            lifecycleOwner = null
+            layoutParams = null
+            isAttached = false
         }
     }
 
@@ -110,14 +126,20 @@ class FloatingPillOverlayManager(
     }
 
     fun hideOverlay() {
-        if (!isAttached) return
+        if (!isAttached && composeView == null) return
+        cleanupInternal()
+    }
+
+    private fun cleanupInternal() {
         composeView?.let { view ->
             runCatching { windowManager.removeView(view) }
         }
         lifecycleOwner?.apply {
-            onPause()
-            onStop()
-            onDestroy()
+            runCatching {
+                onPause()
+                onStop()
+                onDestroy()
+            }
         }
         composeView = null
         lifecycleOwner = null
